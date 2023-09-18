@@ -586,11 +586,10 @@ pub fn StateMachineType(
 
             switch (operation) {
                 .create_accounts => {
-                    self.forest.grooves.accounts_immutable.scope_open();
-                    self.forest.grooves.accounts_mutable.scope_open();
+                    self.forest.grooves.accounts.scope_open();
                 },
                 .create_transfers => {
-                    self.forest.grooves.accounts_mutable.scope_open();
+                    self.forest.grooves.accounts.scope_open();
                     self.forest.grooves.transfers.scope_open();
                     self.forest.grooves.posted.scope_open();
                 },
@@ -603,11 +602,10 @@ pub fn StateMachineType(
 
             switch (operation) {
                 .create_accounts => {
-                    self.forest.grooves.accounts_immutable.scope_close(mode);
-                    self.forest.grooves.accounts_mutable.scope_close(mode);
+                    self.forest.grooves.accounts.scope_close(mode);
                 },
                 .create_transfers => {
-                    self.forest.grooves.accounts_mutable.scope_close(mode);
+                    self.forest.grooves.accounts.scope_close(mode);
                     self.forest.grooves.transfers.scope_close(mode);
                     self.forest.grooves.posted.scope_close(mode);
                 },
