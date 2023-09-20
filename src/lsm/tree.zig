@@ -96,6 +96,8 @@ pub fn TreeType(comptime TreeTable: type, comptime Storage: type) type {
         pub const Manifest = @import("manifest.zig").ManifestType(Table, Storage);
 
         const Grid = @import("../vsr/grid.zig").GridType(Storage);
+        const ManifestLog = @import("manifest_log.zig").ManifestLogType(Storage);
+        const KeyRange = Manifest.KeyRange;
 
         const CompactionType = @import("compaction.zig").CompactionType;
         const Compaction = CompactionType(Table, Tree, Storage);
