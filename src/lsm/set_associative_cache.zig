@@ -287,7 +287,11 @@ pub fn SetAssociativeCacheType(
 
         /// Upsert a value, evicting an older entry if needed. The evicted value, if an update or
         /// insert was performed and the index at which the value was inserted is returned.
-        pub fn upsert(self: *Self, value: *const Value) struct { index: usize, updated: UpdateOrInsert, evicted: ?Value } {
+        pub fn upsert(self: *Self, value: *const Value) struct {
+            index: usize,
+            updated: UpdateOrInsert,
+            evicted: ?Value,
+        } {
             const key = key_from_value(value);
             const set = self.associate(key);
             if (self.search(set, key)) |way| {
