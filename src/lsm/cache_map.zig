@@ -159,7 +159,6 @@ pub fn CacheMapType(
             self.cache.reset();
             self.stash_1.clearRetainingCapacity();
             self.stash_2.clearRetainingCapacity();
-            self.last_upsert_was_update_with_eviction = null;
 
             self.* = .{
                 .cache = self.cache,
