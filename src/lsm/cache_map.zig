@@ -296,8 +296,9 @@ pub fn CacheMapType(
 
                     // A tombstone in the rollback log can only occur when the value doesn't exist
                     // in _both_ the cache and stash on insert (case 3b in upsert_scope()).
-                    // Since we replay the rollback operations backwards, we can assert that we
-                    // only remove it from one place too.
+                    // Since we replay the rollback operations backwards, the state of the cache
+                    // and stash here will be identical to that of just after the insert, so it
+                    // only needs to be removed from the cache.
                     const removed_from_cache = self.cache.remove(key) != null;
                     assert(removed_from_cache);
                 } else {
