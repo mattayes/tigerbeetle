@@ -200,7 +200,7 @@ pub fn CacheMapType(
         // 2. There was an eviction because an item was inserted (eg, two different keys mapping to
         //    the same tags). Put the item in the stash, just like the no-scope case, and don't
         //    store anything in the scope rollback log yet. Case 3 will handle that.
-        // 3. Regardless of eviction, there was an insert.
+        // 3. Regardless of eviction, there was an insert:
         //    a. If the item exists in the stash, it was really an update. Append the stash value
         //       to the scope rollback log.
         //    b. If the item doesn't exist in the stash, it was an insert. Append a tombstone to
@@ -293,9 +293,13 @@ pub fn CacheMapType(
                     // tombstone indicating the original value didn't exist. We don't touch stash_2;
                     // since we can never insert into it directly (only a .compact() can).
                     const key = key_from_value(rollback_value);
-                    const removed = self.cache.remove(key) != null or
-                        self.stash_1.remove(tombstone_from_key(key));
-                    assert(removed);
+
+                    // A tombstone in the rollback log can only occur when the value doesn't exist
+                    // in _both_ the cache and stash on insert (case 3b in upsert_scope()).
+                    // Since we replay the rollback operations backwards, we can assert that we
+                    // only remove it from one place too.
+                    const removed_from_cache = self.cache.remove(key) != null;
+                    assert(removed_from_cache);
                 } else {
                     // Reverting an update or delete consists of an insert of the original value.
                     self.upsert_no_scope(rollback_value);
