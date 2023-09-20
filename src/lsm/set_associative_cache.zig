@@ -285,18 +285,21 @@ pub fn SetAssociativeCacheType(
             return @as(*const Ways, @ptrCast(&result)).*;
         }
 
-        /// Upsert a value, evicting an older entry if needed. The evicted value is made available
-        /// to the on_eviction callback, and is only valid for the lifetime of the callback.
-        /// Return the index at which the value was inserted.
-        pub fn upsert_index(self: *Self, value: *const Value, on_eviction: *const fn (*Self, *const Value, UpdateOrInsert) void) usize {
+        /// Upsert a value, evicting an older entry if needed. The evicted value, if an update or
+        /// insert was performed and the index at which the value was inserted is returned.
+        pub fn upsert(self: *Self, value: *const Value) struct { index: usize, updated: UpdateOrInsert, evicted: ?Value } {
             const key = key_from_value(value);
             const set = self.associate(key);
             if (self.search(set, key)) |way| {
                 // Overwrite the old entry for this key.
                 self.counts.set(set.offset + way, 1);
-                on_eviction(self, &set.values[way], .update);
+                const evicted = set.values[way];
                 set.values[way] = value.*;
-                return set.offset + way;
+                return .{
+                    .index = set.offset + way,
+                    .updated = .update,
+                    .evicted = evicted,
+                };
             }
 
             const clock_index = @divExact(set.offset, layout.ways);
@@ -310,6 +313,7 @@ pub fn SetAssociativeCacheType(
             // to 1. Then in the next iteration it will decrement a count to 0 and break.
             const clock_iterations_max = layout.ways * (math.maxInt(Count) - 1);
 
+            var evicted: ?Value = null;
             var safety_count: usize = 0;
             while (safety_count <= clock_iterations_max) : ({
                 safety_count += 1;
@@ -322,7 +326,7 @@ pub fn SetAssociativeCacheType(
                 self.counts.set(set.offset + way, count);
                 if (count == 0) {
                     // Way has become free.
-                    on_eviction(self, &set.values[way], .insert);
+                    evicted = set.values[way];
                     break;
                 }
             } else {
@@ -335,7 +339,11 @@ pub fn SetAssociativeCacheType(
             self.counts.set(set.offset + way, 1);
             self.clocks.set(clock_index, way +% 1);
 
-            return set.offset + way;
+            return .{
+                .index = set.offset + way,
+                .updated = .insert,
+                .evicted = evicted,
+            };
         }
 
         const Set = struct {
@@ -403,13 +411,6 @@ pub fn SetAssociativeCacheType(
                 clock_hands_per_line,
             });
         }
-
-        // No-op eviction handler for upsert_index.
-        pub fn noop_on_eviction(cache: *Self, value: *const Value, updated: UpdateOrInsert) void {
-            _ = cache;
-            _ = value;
-            _ = updated;
-        }
     };
 }
 
@@ -455,7 +456,7 @@ fn set_associative_cache_test(
                     try expectEqual(i, sac.clocks.get(0));
 
                     const key = i * sac.sets;
-                    _ = sac.upsert_index(&key, SAC.noop_on_eviction);
+                    _ = sac.upsert(&key);
                     try expect(sac.counts.get(i) == 1);
                     try expectEqual(key, sac.get(key).?.*);
                     try expect(sac.counts.get(i) == 2);
@@ -469,7 +470,7 @@ fn set_associative_cache_test(
             // TODO: Test this using on_evicted above.
             {
                 const key = layout.ways * sac.sets;
-                _ = sac.upsert_index(&key, SAC.noop_on_eviction);
+                _ = sac.upsert(&key);
                 try expect(sac.counts.get(0) == 1);
                 try expectEqual(key, sac.get(key).?.*);
                 try expect(sac.counts.get(0) == 2);
@@ -510,7 +511,7 @@ fn set_associative_cache_test(
                     try expectEqual(i, sac.clocks.get(0));
 
                     const key = i * sac.sets;
-                    _ = sac.upsert_index(&key, SAC.noop_on_eviction);
+                    _ = sac.upsert(&key);
                     try expect(sac.counts.get(i) == 1);
                     var j: usize = 2;
                     while (j <= math.maxInt(SAC.Count)) : (j += 1) {
@@ -528,7 +529,7 @@ fn set_associative_cache_test(
             // Insert another element into the first set, causing key 0 to be evicted.
             {
                 const key = layout.ways * sac.sets;
-                _ = sac.upsert_index(&key, SAC.noop_on_eviction);
+                _ = sac.upsert(&key);
                 try expect(sac.counts.get(0) == 1);
                 try expectEqual(key, sac.get(key).?.*);
                 try expect(sac.counts.get(0) == 2);

@@ -6,7 +6,6 @@ const assert = std.debug.assert;
 const maybe = stdx.maybe;
 
 const SetAssociativeCacheType = @import("set_associative_cache.zig").SetAssociativeCacheType;
-const UpdateOrInsert = @import("set_associative_cache.zig").UpdateOrInsert;
 const ScopeCloseMode = @import("tree.zig").ScopeCloseMode;
 
 /// A CacheMap is a hybrid between our SetAssociativeCache and a HashMap (stash). The
@@ -84,23 +83,10 @@ pub fn CacheMapType(
         stash_2: Map,
 
         // Scopes allow you to perform operations on the CacheMap before either persisting or
-        // discarding them. There are a few cases that need to be considered, given the interaction
-        // of our cache, and our stash:
-        // 1. After an upsert, we have evicted an item that was an exact match. This means we're
-        //    doing an update of an item that's in the cache. Append the item to our
-        //    scope_rollback_log.
-        // 2. After an upsert, we have evicted an item that was not an exact match. This means we're
-        //    doing an insert of a new value, but two keys have the same tags. Append the evicted
-        //    item to our scope_rollback_log.
-        // 3. After an upsert, we haven't evicted anything, check our stash:
-        //    a. If a matching item exists there, it means we're doing an update of an item that's
-        //       in the stash. Append the original item to our scope_rollback_log.
-        //    b. If no matching item exists there, it means it's an insert. Append a tombstone
-        //       in our scope_rollback_log.
+        // discarding them.
         scope_is_active: bool = false,
         scope_rollback_log: std.ArrayListUnmanaged(Value),
 
-        last_upsert_was_update_with_eviction: ?bool = null,
         options: Options,
 
         pub fn init(allocator: std.mem.Allocator, options: Options) !Self {
@@ -182,38 +168,74 @@ pub fn CacheMapType(
         }
 
         pub fn upsert(self: *Self, value: *const Value) void {
-            self.last_upsert_was_update_with_eviction = false;
-            _ = self.cache.upsert_index(value, upsert_on_eviction);
-            assert(self.last_upsert_was_update_with_eviction != null);
-            maybe(self.last_upsert_was_update_with_eviction.?);
+            if (self.scope_is_active) {
+                return self.upsert_scope(value);
+            } else {
+                return self.upsert_no_scope(value);
+            }
+        }
 
-            if (self.scope_is_active and !self.last_upsert_was_update_with_eviction.?) {
+        fn upsert_no_scope(self: *Self, value: *const Value) void {
+            assert(!self.scope_is_active);
+
+            const result = self.cache.upsert(value);
+
+            if (result.evicted) |evicted| {
+                switch (result.updated) {
+                    .insert => {
+                        // Here and in upsert_scope, putAssumeCapacity vs getOrPutAssumeCapacity is
+                        // critical. Since we use HashMaps with no Value, putAssumeCapacity _will
+                        // not_ clobber the existing value.
+                        const gop = self.stash_1.getOrPutAssumeCapacity(evicted);
+                        gop.key_ptr.* = evicted;
+                    },
+                    .update => {},
+                }
+            }
+        }
+
+        // When upserting into a scope, there are a few cases that must be handled:
+        // 1. There was an eviction because an item was updated. Append the evicted item to the
+        //    scope rollback log.
+        // 2. There was an eviction because an item was inserted (eg, two different keys mapping to
+        //    the same tags). Put the item in the stash, just like the no-scope case, and don't
+        //    store anything in the scope rollback log yet. Case 3 will handle that.
+        // 3. Regardless of eviction, there was an insert.
+        //    a. If the item exists in the stash, it was really an update. Append the stash value
+        //       to the scope rollback log.
+        //    b. If the item doesn't exist in the stash, it was an insert. Append a tombstone to
+        //       the scope rollback log.
+        fn upsert_scope(self: *Self, value: *const Value) void {
+            assert(self.scope_is_active);
+
+            const result = self.cache.upsert(value);
+
+            if (result.evicted) |evicted| {
+                switch (result.updated) {
+                    .update => {
+                        // Case 1.
+                        self.scope_rollback_log.appendAssumeCapacity(evicted);
+                    },
+                    .insert => {
+                        // Case 2.
+                        const gop = self.stash_1.getOrPutAssumeCapacity(evicted);
+                        gop.key_ptr.* = evicted;
+
+                        // Case 3 below handles appending into the rollback log if needed.
+                    },
+                }
+            }
+
+            if (result.updated == .insert) {
                 if (self.stash_1.getKey(value.*)) |stash_value| {
-                    // Scope Support: Case 3a.
+                    // Case 3a.
                     self.scope_rollback_log.appendAssumeCapacity(stash_value);
                 } else {
-                    // Scope Support: Case 3b.
+                    // Case 3b.
                     self.scope_rollback_log.appendAssumeCapacity(
                         tombstone_from_key(key_from_value(value)),
                     );
                 }
-            }
-            self.last_upsert_was_update_with_eviction = null;
-        }
-
-        fn upsert_on_eviction(cache: *Cache, value: *const Value, updated: UpdateOrInsert) void {
-            var self = @fieldParentPtr(Self, "cache", cache);
-
-            self.last_upsert_was_update_with_eviction.? = updated == .update;
-
-            if (updated == .insert) {
-                // Here, putAssumeCapacity vs getOrPutAssumeCapacity is critical. Since we use
-                // HashMaps with no Value, putAssumeCapacity _will not_ clobber the existing value.
-                // Case 3a in upsert() handles the scope_map support here.
-                const gop = self.stash_1.getOrPutAssumeCapacity(value.*);
-                gop.key_ptr.* = value.*;
-            } else if (self.scope_is_active) {
-                self.scope_rollback_log.appendAssumeCapacity(value.*);
             }
         }
 
@@ -276,7 +298,7 @@ pub fn CacheMapType(
                     assert(removed);
                 } else {
                     // Reverting an update or delete consists of an insert of the original value.
-                    self.upsert(rollback_value);
+                    self.upsert_no_scope(rollback_value);
                 }
             }
 
