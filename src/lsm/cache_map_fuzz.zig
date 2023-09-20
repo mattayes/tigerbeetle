@@ -297,6 +297,10 @@ pub fn generate_fuzz_ops(random: std.rand.Random, fuzz_op_count: usize) ![]const
         } else {
             // Otherwise pick a random FuzzOp.
             fuzz_op_tag = fuzz.random_enum(random, FuzzOpTag, fuzz_op_distribution);
+            if (i == fuzz_ops.len - 1 and fuzz_op_tag == FuzzOpTag.scope) {
+                // We can't finish let our final operation be a scope open.
+                fuzz_op_tag = FuzzOpTag.get;
+            }
         }
 
         fuzz_op.* = switch (fuzz_op_tag) {

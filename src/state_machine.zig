@@ -582,8 +582,6 @@ pub fn StateMachineType(
         }
 
         fn scope_open(self: *StateMachine, operation: Operation) void {
-            assert(operation != .lookup_accounts and operation != .lookup_transfers);
-
             switch (operation) {
                 .create_accounts => {
                     self.forest.grooves.accounts.scope_open();
@@ -598,8 +596,6 @@ pub fn StateMachineType(
         }
 
         fn scope_close(self: *StateMachine, operation: Operation, mode: ScopeCloseMode) void {
-            assert(operation != .lookup_accounts and operation != .lookup_transfers);
-
             switch (operation) {
                 .create_accounts => {
                     self.forest.grooves.accounts.scope_close(mode);

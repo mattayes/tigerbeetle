@@ -77,7 +77,7 @@ pub fn CompactionType(
         const TableInfoReference = Manifest.TableInfoReference;
 
         pub const TableInfoA = union(enum) {
-            immutable: []Value,
+            immutable: []const Value,
             disk: TableInfoReference,
         };
 
@@ -455,8 +455,9 @@ pub fn CompactionType(
                     var target = Table.data_block_values(compaction.data_blocks[0]);
 
                     const filled = compaction.fill_immutable_values(target);
+                    assert(filled > 0); // TODO Hmmmmmm
 
-                    // The immutable table is always considered `table a`, which maps to 0.
+                    // The immutable table is always considered "Table A", which maps to 0.
                     compaction.values_in[0] = target[0..filled];
                 }
 
@@ -482,7 +483,8 @@ pub fn CompactionType(
             var source = compaction.context.table_info_a.immutable;
 
             if (constants.verify) {
-                // Our inputs can have duplicates, but must still be increasing.
+                // The input may have duplicate keys (last one wins), but keys must be
+                // non-decreasing.
                 for (source[0 .. source.len - 1], source[1..source.len]) |*value, *value_next| {
                     assert(compare_keys(key_from_value(value_next), key_from_value(value)) != .lt);
                 }
@@ -496,8 +498,7 @@ pub fn CompactionType(
                     target_index -= 1;
                 }
 
-                target[target_index] =
-                    source[source_index];
+                target[target_index] = source[source_index];
 
                 if (target_index == target.len - 1) {
                     break;
@@ -515,6 +516,9 @@ pub fn CompactionType(
                     assert(compare_keys(key_from_value(value_next), key_from_value(value)) == .gt);
                 }
             }
+
+            assert(target_index <= source_index);
+            assert(target_index > 0);
 
             return target_index;
         }

@@ -1068,6 +1068,8 @@ pub fn TreeType(comptime TreeTable: type, comptime Storage: type) type {
 
         /// Called after the last beat of a full compaction bar.
         fn swap_mutable_and_immutable(tree: *Tree, snapshot_min: u64) void {
+            assert(tree.table_mutable.mutability == .mutable);
+            assert(tree.table_immutable.mutability == .immutable);
             assert(tree.table_immutable.mutability.immutable.flushed);
             assert(snapshot_min > 0);
             assert(snapshot_min < snapshot_latest);
@@ -1078,16 +1080,13 @@ pub fn TreeType(comptime TreeTable: type, comptime Storage: type) type {
             // In addition, the immutable table is conceptually an output table of this compaction
             // bar, and now its snapshot_min matches the snapshot_min of the Compactions' output
             // tables.
-            var current_table_mutable = tree.table_mutable;
-            current_table_mutable.make_immutable(snapshot_min);
-
-            var current_table_immutable = tree.table_immutable;
-            current_table_immutable.make_mutable();
-
-            tree.table_immutable = current_table_mutable;
-            tree.table_mutable = current_table_immutable;
+            tree.table_mutable.make_immutable(snapshot_min);
+            tree.table_immutable.make_mutable();
+            std.mem.swap(TableMemory, &tree.table_mutable, &tree.table_immutable);
 
             assert(tree.table_mutable.count() == 0);
+            assert(tree.table_mutable.mutability == .mutable);
+            assert(tree.table_immutable.mutability == .immutable);
         }
 
         pub fn assert_between_bars(tree: *const Tree) void {

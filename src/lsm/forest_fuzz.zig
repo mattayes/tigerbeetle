@@ -432,9 +432,9 @@ const Environment = struct {
                             std.debug.panic("Account checkpointed but not in lsm after crash.\n {}\n", .{checkpointed_account});
                         }
 
-                        // There are strict limits around how many values can be prefetched in one
-                        // go, see `map_value_count_max` in groove.zig. Thus, we need to make sure
-                        // we manually call groove.objects_cache.compact() every
+                        // There are strict limits around how many values can be prefetched by one
+                        // commit, see `map_value_count_max` in groove.zig. Thus, we need to make
+                        // sure we manually call groove.objects_cache.compact() every
                         // `map_value_count_max` operations here. This is specific to this fuzzing
                         // code.
                         const groove_map_value_count_max =
