@@ -81,17 +81,18 @@ pub fn TableMemoryType(comptime Table: type) type {
             assert(table.mutability == .mutable);
             assert(table.value_context.count < value_count_max);
 
-            const put_order = if (table.value_context.count == 0)
-                .lt
-            else
-                compare_keys(
+            if (table.value_context.sorted) {
+                table.value_context.sorted = table.value_context.count == 0 or
+                    compare_keys(
                     key_from_value(&table.values[table.value_context.count - 1]),
                     key_from_value(value),
-                );
+                ).compare(.lte);
+            } else {
+                assert(table.value_context.count > 0);
+            }
+
             table.values[table.value_context.count] = value.*;
             table.value_context.count += 1;
-
-            table.value_context.sorted = table.value_context.sorted and put_order != .gt;
         }
 
         /// This function is intended to never be called by regular code. It only
