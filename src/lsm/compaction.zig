@@ -455,10 +455,12 @@ pub fn CompactionType(
                     var target = Table.data_block_values(compaction.data_blocks[0]);
 
                     const filled = compaction.fill_immutable_values(target);
-                    assert(filled > 0); // TODO Hmmmmmm
+                    assert(filled > 0);
 
                     // The immutable table is always considered "Table A", which maps to 0.
                     compaction.values_in[0] = target[0..filled];
+                } else {
+                    assert(compaction.values_in[0].len == 0);
                 }
 
                 compaction.iterator_check_finish(input_level);
@@ -477,50 +479,72 @@ pub fn CompactionType(
         // TODO: We need to reimplement the .secondary_index optimization for sort here.
         /// Copies values to `target` from our immutable table input, taking the last
         /// matching value to resolve duplicates, and updating the immutable table slice.
-        fn fill_immutable_values(compaction: *Compaction, target: []Value) u32 {
-            var source_index: u32 = 0;
-            var target_index: u32 = 0;
+        fn fill_immutable_values(compaction: *Compaction, target: []Value) usize {
             var source = compaction.context.table_info_a.immutable;
+            assert(source.len > 0);
 
             if (constants.verify) {
                 // The input may have duplicate keys (last one wins), but keys must be
                 // non-decreasing.
-                for (source[0 .. source.len - 1], source[1..source.len]) |*value, *value_next| {
-                    assert(compare_keys(key_from_value(value_next), key_from_value(value)) != .lt);
+                // A source length of 1 is always non-decreasing.
+                if (source.len > 1) {
+                    for (
+                        source[0 .. source.len - 1],
+                        source[1..source.len],
+                    ) |*value, *value_next| {
+                        assert(compare_keys(
+                            key_from_value(value_next),
+                            key_from_value(value),
+                        ) != .lt);
+                    }
                 }
             }
 
-            while (source_index < source.len) {
-                if (target_index > 0 and compare_keys(
-                    key_from_value(&target[target_index - 1]),
-                    key_from_value(&source[source_index]),
-                ) == .eq) {
-                    target_index -= 1;
-                }
-
+            var source_index: usize = 0;
+            var target_index: usize = 0;
+            while (target_index < target.len and source_index < source.len) : (source_index += 1) {
                 target[target_index] = source[source_index];
 
-                if (target_index == target.len - 1) {
-                    break;
-                }
+                const next_value_equal = source_index + 1 < source.len and compare_keys(
+                    key_from_value(&target[target_index]),
+                    key_from_value(&source[source_index + 1]),
+                ) == .eq;
 
-                source_index += 1;
-                target_index += 1;
+                if (!next_value_equal) {
+                    target_index += 1;
+                }
             }
+
+            // At this point, source_index and target_index are actually counts. source_index will
+            // always be incremented after the final iteration as part of the continue expression.
+            // The loop will continue until either the source is exhausted, or there's a fresh
+            // value, either will trigger target_index to be incremented.
+            const source_count = source_index;
+            const target_count = target_index;
+
             compaction.context.table_info_a.immutable =
-                compaction.context.table_info_a.immutable[source_index..];
+                compaction.context.table_info_a.immutable[source_count..];
 
             if (constants.verify) {
                 // Our output must be strictly increasing.
-                for (target[0 .. target_index - 1], target[1..target_index]) |*value, *value_next| {
-                    assert(compare_keys(key_from_value(value_next), key_from_value(value)) == .gt);
+                // An output length of 1 is always strictly increasing.
+                if (target_count > 1) {
+                    for (
+                        target[0 .. target_count - 1],
+                        target[1..target_count],
+                    ) |*value, *value_next| {
+                        assert(compare_keys(
+                            key_from_value(value_next),
+                            key_from_value(value),
+                        ) == .gt);
+                    }
                 }
             }
 
-            assert(target_index <= source_index);
-            assert(target_index > 0);
+            assert(target_count <= source_count);
+            assert(target_count > 0);
 
-            return target_index;
+            return target_count;
         }
 
         fn on_index_block(iterator_b: *LevelTableValueBlockIterator) void {
