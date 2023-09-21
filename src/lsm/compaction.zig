@@ -519,7 +519,7 @@ pub fn CompactionType(
             // source_index will always be incremented after the final iteration as part of the
             // continue expression.
             // target_index will always be incremented, since either source_index runs out first
-            // so next_value_equal is false, or a new value is hit, which wil increment it.
+            // so next_value_equal is false, or a new value is hit, which will increment it.
             const source_count = source_index;
             const target_count = target_index;
 
