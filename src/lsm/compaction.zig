@@ -515,10 +515,11 @@ pub fn CompactionType(
                 }
             }
 
-            // At this point, source_index and target_index are actually counts. source_index will
-            // always be incremented after the final iteration as part of the continue expression.
-            // The loop will continue until either the source is exhausted, or there's a fresh
-            // value, either will trigger target_index to be incremented.
+            // At this point, source_index and target_index are actually counts.
+            // source_index will always be incremented after the final iteration as part of the
+            // continue expression.
+            // target_index will always be incremented, since either source_index runs out first
+            // so next_value_equal is false, or a new value is hit, which wil increment it.
             const source_count = source_index;
             const target_count = target_index;
 
