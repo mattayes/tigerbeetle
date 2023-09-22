@@ -503,14 +503,18 @@ pub fn CompactionType(
             var source_index: usize = 0;
             var target_index: usize = 0;
             while (target_index < target.len and source_index < source.len) : (source_index += 1) {
+                // The last value in a run of duplicates needs to be the one that ends up in
+                // target.
                 target[target_index] = source[source_index];
 
-                const next_value_equal = source_index + 1 < source.len and compare_keys(
-                    key_from_value(&target[target_index]),
+                // If we're at the end of the source, there is no next value, so the next value
+                // can't be equal.
+                const value_next_equal = source_index + 1 < source.len and compare_keys(
+                    key_from_value(&source[source_index]),
                     key_from_value(&source[source_index + 1]),
                 ) == .eq;
 
-                if (!next_value_equal) {
+                if (!value_next_equal) {
                     target_index += 1;
                 }
             }
@@ -519,7 +523,7 @@ pub fn CompactionType(
             // source_index will always be incremented after the final iteration as part of the
             // continue expression.
             // target_index will always be incremented, since either source_index runs out first
-            // so next_value_equal is false, or a new value is hit, which will increment it.
+            // so value_next_equal is false, or a new value is hit, which will increment it.
             const source_count = source_index;
             const target_count = target_index;
 
