@@ -487,16 +487,8 @@ pub fn CompactionType(
                 // The input may have duplicate keys (last one wins), but keys must be
                 // non-decreasing.
                 // A source length of 1 is always non-decreasing.
-                if (source.len > 1) {
-                    for (
-                        source[0 .. source.len - 1],
-                        source[1..source.len],
-                    ) |*value, *value_next| {
-                        assert(compare_keys(
-                            key_from_value(value_next),
-                            key_from_value(value),
-                        ) != .lt);
-                    }
+                for (source[0 .. source.len - 1], source[1..source.len]) |*value, *value_next| {
+                    assert(compare_keys(key_from_value(value_next), key_from_value(value)) != .lt);
                 }
             }
 
@@ -527,27 +519,22 @@ pub fn CompactionType(
             const source_count = source_index;
             const target_count = target_index;
 
+            assert(target_count <= source_count);
+            assert(target_count > 0);
+
             compaction.context.table_info_a.immutable =
                 compaction.context.table_info_a.immutable[source_count..];
 
             if (constants.verify) {
                 // Our output must be strictly increasing.
                 // An output length of 1 is always strictly increasing.
-                if (target_count > 1) {
-                    for (
-                        target[0 .. target_count - 1],
-                        target[1..target_count],
-                    ) |*value, *value_next| {
-                        assert(compare_keys(
-                            key_from_value(value_next),
-                            key_from_value(value),
-                        ) == .gt);
-                    }
+                for (
+                    target[0 .. target_count - 1],
+                    target[1..target_count],
+                ) |*value, *value_next| {
+                    assert(compare_keys(key_from_value(value_next), key_from_value(value)) == .gt);
                 }
             }
-
-            assert(target_count <= source_count);
-            assert(target_count > 0);
 
             return target_count;
         }

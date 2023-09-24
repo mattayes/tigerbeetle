@@ -61,12 +61,12 @@ const Environment = struct {
     }
 
     pub fn deinit(self: *Environment) void {
-        self.cache_map.deinit(allocator);
-        self.model.deinit();
         self.scope_model.deinit();
+        self.model.deinit();
+        self.cache_map.deinit(allocator);
     }
 
-    fn copy_hash_map(src: anytype, dst: anytype) !void {
+    fn copy_hash_map(dst: anytype, src: anytype) !void {
         dst.clearRetainingCapacity();
         var it = src.iterator();
         while (it.next()) |kv| {
@@ -105,7 +105,7 @@ const Environment = struct {
                     const cache_map_value = env.cache_map.get(key);
 
                     // Compare result to model.
-                    var model_value = env.model.get(key);
+                    const model_value = env.model.get(key);
                     if (model_value == null) {
                         assert(cache_map_value == null);
                     } else if (env.compacts >= 2 and model_value.?.op <= env.compacts - 2) {
@@ -113,6 +113,9 @@ const Environment = struct {
                         // doesn't have to exist in the cache_map. It may still be served from the
                         // cache layer, however.
                         stdx.maybe(cache_map_value == null);
+                        if (cache_map_value) |unwrapped_cache_map_value| {
+                            assert(std.meta.eql(unwrapped_cache_map_value.*, model_value.?.value));
+                        }
                     } else {
                         assert(std.meta.eql(model_value.?.value, cache_map_value.?.*));
                     }
@@ -123,7 +126,7 @@ const Environment = struct {
                         env.scope_open = true;
 
                         // Copy env.model to env.scope_model, so we can easily revert later.
-                        try copy_hash_map(&env.model, &env.scope_model);
+                        try copy_hash_map(&env.scope_model, &env.model);
                     },
                     .persist => {
                         env.cache_map.scope_close(.persist);
@@ -137,7 +140,7 @@ const Environment = struct {
                         env.scope_open = false;
 
                         // To revert the scope, we can just overwrite model with scope_model.
-                        try copy_hash_map(&env.scope_model, &env.model);
+                        try copy_hash_map(&env.model, &env.scope_model);
                         env.scope_model.clearRetainingCapacity();
                     },
                 },

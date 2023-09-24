@@ -243,7 +243,7 @@ pub fn SetAssociativeCacheType(
             const set = self.associate(key);
             const way = self.search(set, key) orelse return null;
 
-            var removed: Value = set.values[way];
+            const removed: Value = set.values[way];
             self.counts.set(set.offset + way, 0);
             set.values[way] = undefined;
 
@@ -471,7 +471,6 @@ fn set_associative_cache_test(
             if (log) sac.associate(0).inspect(sac);
 
             // Insert another element into the first set, causing key 0 to be evicted.
-            // TODO: Test this using on_evicted above.
             {
                 const key = layout.ways * sac.sets;
                 _ = sac.upsert(&key);

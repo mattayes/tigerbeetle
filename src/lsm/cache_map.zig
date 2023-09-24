@@ -169,13 +169,13 @@ pub fn CacheMapType(
 
         pub fn upsert(self: *Self, value: *const Value) void {
             if (self.scope_is_active) {
-                return self.upsert_scope(value);
+                return self.upsert_scope_opened(value);
             } else {
-                return self.upsert_no_scope(value);
+                return self.upsert_scope_closed(value);
             }
         }
 
-        fn upsert_no_scope(self: *Self, value: *const Value) void {
+        fn upsert_scope_closed(self: *Self, value: *const Value) void {
             assert(!self.scope_is_active);
 
             const result = self.cache.upsert(value);
@@ -205,7 +205,7 @@ pub fn CacheMapType(
         //       to the scope rollback log.
         //    b. If the item doesn't exist in the stash, it was an insert. Append a tombstone to
         //       the scope rollback log.
-        fn upsert_scope(self: *Self, value: *const Value) void {
+        fn upsert_scope_opened(self: *Self, value: *const Value) void {
             assert(self.scope_is_active);
 
             const result = self.cache.upsert(value);
@@ -295,7 +295,7 @@ pub fn CacheMapType(
                     const key = key_from_value(rollback_value);
 
                     // A tombstone in the rollback log can only occur when the value doesn't exist
-                    // in _both_ the cache and stash on insert (case 3b in upsert_scope()).
+                    // in _both_ the cache and stash on insert (case 3b in upsert_scope_opened()).
                     // Since we replay the rollback operations backwards, the state of the cache
                     // and stash here will be identical to that of just after the insert, so it
                     // only needs to be removed from the cache.
@@ -303,7 +303,7 @@ pub fn CacheMapType(
                     assert(removed_from_cache);
                 } else {
                     // Reverting an update or delete consists of an insert of the original value.
-                    self.upsert_no_scope(rollback_value);
+                    self.upsert_scope_closed(rollback_value);
                 }
             }
 
