@@ -445,6 +445,10 @@ pub fn ReplicaType(
 
         aof: *AOF,
 
+        prefetch_timer: std.time.Timer = undefined,
+        compact_timer: std.time.Timer = undefined,
+        checkpoint_timer: std.time.Timer = undefined,
+
         const OpenOptions = struct {
             node_count: u8,
             storage_size_limit: u64,
@@ -771,6 +775,9 @@ pub fn ReplicaType(
             assert(quorum_replication + quorum_view_change > replica_count);
 
             self.time = options.time;
+            self.prefetch_timer = std.time.Timer.start() catch unreachable;
+            self.compact_timer = std.time.Timer.start() catch unreachable;
+            self.checkpoint_timer = std.time.Timer.start() catch unreachable;
 
             // The clock is special-cased for standbys. We want to balance two concerns:
             //   - standby clock should never affect cluster time,
@@ -3083,11 +3090,15 @@ pub fn ReplicaType(
                 .setup_client_replies => {
                     self.client_replies.ready(commit_op_client_replies_ready_callback);
                 },
-                .compact_state_machine => self.state_machine.compact(
-                    commit_op_compact_callback,
-                    self.commit_prepare.?.header.op,
-                ),
+                .compact_state_machine => {
+                    self.compact_timer.reset();
+                    self.state_machine.compact(
+                        commit_op_compact_callback,
+                        self.commit_prepare.?.header.op,
+                    );
+                },
                 .checkpoint_state_machine => {
+                    self.checkpoint_timer.reset();
                     self.state_machine.checkpoint(commit_op_checkpoint_state_machine_callback);
                 },
                 .checkpoint_client_replies => {
@@ -3337,6 +3348,7 @@ pub fn ReplicaType(
                 @src(),
             );
 
+            self.prefetch_timer.reset();
             if (prepare.header.operation.vsr_reserved()) {
                 // NOTE: this inline callback is fine because the next stage of committing,
                 // `.setup_client_replies`, is always async.
@@ -3356,6 +3368,9 @@ pub fn ReplicaType(
             assert(self.commit_stage == .prefetch_state_machine);
             assert(self.commit_prepare != null);
             assert(self.commit_prepare.?.header.op == self.commit_min + 1);
+
+            const t0 = self.prefetch_timer.read();
+            std.log.info("Timing: state_machine.prefetch(): {}us", .{t0 / 1000});
 
             // Ensure that ClientReplies has at least one Write available.
             maybe(self.client_replies.writes.available() == 0);
@@ -3423,6 +3438,9 @@ pub fn ReplicaType(
             const op = self.commit_prepare.?.header.op;
             assert(op == self.commit_min);
             assert(op <= self.op_checkpoint_next_trigger());
+
+            const t0 = self.compact_timer.read();
+            std.log.info("Timing: state_machine.compact(): {}us", .{t0 / 1000});
 
             if (op == self.op_checkpoint_next_trigger()) {
                 assert(op == self.op);
@@ -3554,6 +3572,9 @@ pub fn ReplicaType(
                 .checkpoint,
             );
 
+            const t0 = self.checkpoint_timer.read();
+            std.log.info("Timing: replica.checkpoint(): {}us", .{t0 / 1000});
+
             if (self.event_callback) |hook| hook(self, .checkpoint_completed);
             self.commit_dispatch(.cleanup);
         }
@@ -3645,6 +3666,9 @@ pub fn ReplicaType(
                 }) catch @panic("aof failure");
             }
 
+            var t = std.time.Timer.start() catch unreachable;
+            t.reset();
+
             const reply_body_size = switch (prepare.header.operation) {
                 .reserved, .root => unreachable,
                 .register => 0,
@@ -3658,6 +3682,8 @@ pub fn ReplicaType(
                     reply.buffer[@sizeOf(Header)..],
                 ),
             };
+            const t0 = t.read();
+            std.log.info("Timing: state_machine.execute(): {}us", .{t0 / 1000});
 
             assert(self.state_machine.commit_timestamp <= prepare.header.timestamp or constants.aof_recovery);
             self.state_machine.commit_timestamp = prepare.header.timestamp;
