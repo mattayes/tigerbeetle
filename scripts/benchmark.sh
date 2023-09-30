@@ -35,14 +35,14 @@ fi
 zig/zig build install -Doptimize=ReleaseSafe -Dconfig=production $cpu $ZIG_TARGET
 
 function onerror {
-    if [ "$?" == "0" ]; then
-        rm benchmark.log
-    else
-        echo -e "${COLOR_RED}"
-        echo "Error running benchmark, here are more details (from benchmark.log):"
-        echo -e "${COLOR_END}"
-        cat benchmark.log
-    fi
+    # if [ "$?" == "0" ]; then
+    #     rm benchmark.log
+    # else
+    #     echo -e "${COLOR_RED}"
+    #     echo "Error running benchmark, here are more details (from benchmark.log):"
+    #     echo -e "${COLOR_END}"
+    #     cat benchmark.log
+    # fi
 
     for I in $REPLICAS
     do
@@ -57,7 +57,7 @@ do
     echo "Formatting replica $I..."
 
     # Be careful to use a benchmark-specific filename so that we don't erase a real data file:
-    FILE="./0_${I}.tigerbeetle.benchmark"
+    FILE="/mnt/0_${I}.tigerbeetle.benchmark"
     if [ -f "$FILE" ]; then
         rm "$FILE"
     fi
@@ -68,8 +68,8 @@ done
 for I in $REPLICAS
 do
     echo "Starting replica $I..."
-    FILE="./0_${I}.tigerbeetle.benchmark"
-    ./tigerbeetle start "--addresses=${PORT}" "$FILE" >> benchmark.log 2>&1 &
+    FILE="/mnt/0_${I}.tigerbeetle.benchmark"
+    ./tigerbeetle start "--addresses=${PORT}" "$FILE" --cache-grid=16GB &
 done
 
 echo ""
@@ -80,7 +80,7 @@ echo ""
 
 for I in $REPLICAS
 do
-    FILE="./0_${I}.tigerbeetle.benchmark"
+    FILE="/mnt/0_${I}.tigerbeetle.benchmark"
     if [ -f "$FILE" ]; then
         rm "$FILE"
     fi
