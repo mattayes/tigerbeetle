@@ -219,7 +219,7 @@ pub fn Client(comptime StateMachine_: type, comptime MessageBus: type) type {
                 .size = @as(u32, @intCast(@sizeOf(Header) + message_body_size)),
             };
 
-            log.debug("{}: request: user_data={} request={} size={} {s}", .{
+            log.info("{}: request: user_data={} request={} size={} {s}", .{
                 self.id,
                 user_data,
                 message.header.request,
@@ -591,7 +591,7 @@ pub fn Client(comptime StateMachine_: type, comptime MessageBus: type) type {
             // The checksum of this request becomes the parent of our next reply:
             self.parent = message.header.checksum;
 
-            log.debug("{}: send_request_for_the_first_time: request={} checksum={}", .{
+            log.info("{}: send_request_for_the_first_time: request={} checksum={}", .{
                 self.id,
                 message.header.request,
                 message.header.checksum,

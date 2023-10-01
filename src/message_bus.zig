@@ -611,6 +611,7 @@ fn MessageBusType(comptime process_type: vsr.ProcessType) type {
             /// if the queue was previously empty.
             pub fn send_message(connection: *Connection, bus: *Self, message: *Message) void {
                 assert(connection.peer == .client or connection.peer == .replica);
+                log.info("inside message_Bus send_message", .{});
                 switch (connection.state) {
                     .connected, .connecting => {},
                     .terminating => return,
@@ -944,6 +945,7 @@ fn MessageBusType(comptime process_type: vsr.ProcessType) type {
                 const message = connection.send_queue.head() orelse return;
                 assert(!connection.send_submitted);
                 connection.send_submitted = true;
+                std.log.info("message_bus: sending to io", .{});
                 bus.io.send(
                     *Self,
                     bus,
