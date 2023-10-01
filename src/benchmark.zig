@@ -428,8 +428,11 @@ const Benchmark = struct {
         operation: StateMachine.Operation,
         payload: []u8,
     ) void {
+        std.log.info("send() entered", .{});
+
         b.callback = callback;
         b.message = b.client.get_message();
+        std.log.info("After Got message", .{});
 
         stdx.copy_disjoint(
             .inexact,
@@ -437,6 +440,7 @@ const Benchmark = struct {
             b.message.?.buffer[@sizeOf(vsr.Header)..],
             payload,
         );
+        std.log.info("After copy_disjoint", .{});
 
         b.client.request(
             @intCast(@intFromPtr(b)),
@@ -445,6 +449,7 @@ const Benchmark = struct {
             b.message.?,
             payload.len,
         );
+        std.log.info("After b.client.request", .{});
     }
 
     fn send_complete(
