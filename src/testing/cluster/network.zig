@@ -293,7 +293,7 @@ pub const Network = struct {
             }
         }
 
-        target_bus.on_message_callback(target_bus, target_message);
+        target_bus.on_message_callback(target_message);
     }
 
     fn raw_process_to_process(raw: u128) Process {

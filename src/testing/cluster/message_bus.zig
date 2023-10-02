@@ -16,14 +16,24 @@ pub const Process = union(ProcessType) {
 };
 
 pub const MessageBus = struct {
+    pub const Callback = struct {
+        /// The callback to be called when a message is received.
+        on_message_received: *const fn (message_bus: *MessageBus, message: *Message) void,
+
+        /// Optional callback to be called when a message is about to be freed.
+        on_message_freed: ?*const fn (
+            message_bus: *MessageBus,
+            message: *const Message,
+        ) void = null,
+    };
+
     network: *Network,
     pool: *MessagePool,
 
     cluster: u32,
     process: Process,
 
-    /// The callback to be called when a message is received.
-    on_message_callback: *const fn (message_bus: *MessageBus, message: *Message) void,
+    callback: Callback,
 
     pub const Options = struct {
         network: *Network,
@@ -34,7 +44,7 @@ pub const MessageBus = struct {
         cluster: u32,
         process: Process,
         message_pool: *MessagePool,
-        on_message_callback: *const fn (message_bus: *MessageBus, message: *Message) void,
+        callback: Callback,
         options: Options,
     ) !MessageBus {
         return MessageBus{
@@ -42,7 +52,7 @@ pub const MessageBus = struct {
             .pool = message_pool,
             .cluster = cluster,
             .process = process,
-            .on_message_callback = on_message_callback,
+            .callback = callback,
         };
     }
 
@@ -56,7 +66,14 @@ pub const MessageBus = struct {
     }
 
     pub fn unref(bus: *MessageBus, message: *Message) void {
+        if (message.references == 1) {
+            if (bus.callback.on_message_freed) |callback| callback(bus, message);
+        }
         bus.pool.unref(message);
+    }
+
+    pub inline fn on_message_callback(bus: *MessageBus, message: *Message) void {
+        bus.callback.on_message_received(bus, message);
     }
 
     pub fn send_message_to_replica(bus: *MessageBus, replica: u8, message: *Message) void {
