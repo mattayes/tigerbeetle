@@ -481,9 +481,11 @@ const Benchmark = struct {
 
         const b: *Benchmark = @ptrFromInt(@as(u64, @intCast(user_data)));
 
+        std.log.info("send_complete: before unref", .{});
         b.client.unref(b.message.?);
         b.message = null;
 
+        std.log.info("send_complete: before callback", .{});
         const callback = b.callback.?;
         b.callback = null;
         callback(b);
