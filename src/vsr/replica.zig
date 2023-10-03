@@ -202,7 +202,7 @@ pub fn ReplicaType(
         client_replies: ClientReplies,
 
         /// An abstraction to send messages from the replica to another replica or client.
-        /// The message bus will also deliver messages to this replica by calling `on_message_from_bus()`.
+        /// The message bus will also deliver messages to this replica by calling `on_message_received()`.
         message_bus: MessageBus,
 
         /// For executing service up-calls after an operation has been committed:
@@ -215,7 +215,7 @@ pub fn ReplicaType(
         /// Durably store VSR state, the "root" of the LSM tree, and other replica metadata.
         superblock: SuperBlock,
 
-        /// Context for SuperBlock.open(), .checkpoint(), .sync_start(), and .sync_done().
+        /// Context for SuperBlock.open(), .checkpoint(), and .sync().
         superblock_context: SuperBlock.Context = undefined,
         /// Context for SuperBlock.view_change().
         superblock_context_view_change: SuperBlock.Context = undefined,
@@ -815,7 +815,9 @@ pub fn ReplicaType(
                 options.cluster,
                 .{ .replica = options.replica_index },
                 options.message_pool,
-                Self.on_message_from_bus,
+                .{
+                    .on_message_received = Self.on_message_received,
+                },
                 options.message_bus_options,
             );
             errdefer self.message_bus.deinit(allocator);
@@ -1055,7 +1057,7 @@ pub fn ReplicaType(
         }
 
         /// Called by the MessageBus to deliver a message to the replica.
-        fn on_message_from_bus(message_bus: *MessageBus, message: *Message) void {
+        fn on_message_received(message_bus: *MessageBus, message: *Message) void {
             const self = @fieldParentPtr(Self, "message_bus", message_bus);
             self.on_message(message);
         }

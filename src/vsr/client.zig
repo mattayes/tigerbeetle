@@ -118,7 +118,10 @@ pub fn Client(comptime StateMachine_: type, comptime MessageBus: type) type {
                 cluster,
                 .{ .client = id },
                 message_pool,
-                Self.on_message,
+                .{
+                    .on_message_received = Self.on_message_received,
+                    .on_message_freed = Self.on_message_freed,
+                },
                 message_bus_options,
             );
             errdefer message_bus.deinit(allocator);
@@ -153,35 +156,6 @@ pub fn Client(comptime StateMachine_: type, comptime MessageBus: type) type {
             }
             assert(self.messages_available == constants.client_request_queue_max);
             self.message_bus.deinit(allocator);
-        }
-
-        pub fn on_message(message_bus: *MessageBus, message: *Message) void {
-            const self = @fieldParentPtr(Self, "message_bus", message_bus);
-            log.debug("{}: on_message: {}", .{ self.id, message.header });
-            if (message.header.invalid()) |reason| {
-                log.debug("{}: on_message: invalid ({s})", .{ self.id, reason });
-                return;
-            }
-            if (message.header.cluster != self.cluster) {
-                log.warn("{}: on_message: wrong cluster (cluster should be {}, not {})", .{
-                    self.id,
-                    self.cluster,
-                    message.header.cluster,
-                });
-                return;
-            }
-            switch (message.header.command) {
-                .pong_client => self.on_pong_client(message),
-                .reply => self.on_reply(message),
-                .eviction => self.on_eviction(message),
-                else => {
-                    log.warn("{}: on_message: ignoring misdirected {s} message", .{
-                        self.id,
-                        @tagName(message.header.command),
-                    });
-                    return;
-                },
-            }
         }
 
         pub fn tick(self: *Self) void {
@@ -282,7 +256,6 @@ pub fn Client(comptime StateMachine_: type, comptime MessageBus: type) type {
         }
 
         /// Acquires a message from the message bus.
-        ///
         /// The caller must ensure that a message is available.
         pub fn get_message(self: *Self) *Message {
             assert(self.messages_available > 0);
@@ -293,11 +266,58 @@ pub fn Client(comptime StateMachine_: type, comptime MessageBus: type) type {
 
         /// Releases a message back to the message bus.
         pub fn unref(self: *Self, message: *Message) void {
+            // Only request messages are unreferenced by this function,
+            // all others should use `message_bus.unref` directly.
+            assert(message.header.command == .request);
             assert(self.messages_available < constants.client_request_queue_max);
-            if (message.references == 1) {
+
+            self.message_bus.unref(message);
+
+            // Invoking `unref` may not free the message. For instance, in the event of a
+            // timeout followed by a retransmission, the request message could still be
+            // referenced by the send queue while the reply arrives.
+            //
+            // Therefore, `messages_available` should be incremented exclusively by the
+            // `on_message_freed` callback to avoid discrepancies in available messages count.
+            maybe(message.references > 0);
+        }
+
+        fn on_message_freed(message_bus: *MessageBus, message: *const Message) void {
+            const self = @fieldParentPtr(Self, "message_bus", message_bus);
+            if (message.header.command == .request) {
+                assert(message.references == 1);
+                assert(self.messages_available < constants.client_request_queue_max);
                 self.messages_available += 1;
             }
-            self.message_bus.unref(message);
+        }
+
+        fn on_message_received(message_bus: *MessageBus, message: *Message) void {
+            const self = @fieldParentPtr(Self, "message_bus", message_bus);
+            log.debug("{}: on_message: {}", .{ self.id, message.header });
+            if (message.header.invalid()) |reason| {
+                log.debug("{}: on_message: invalid ({s})", .{ self.id, reason });
+                return;
+            }
+            if (message.header.cluster != self.cluster) {
+                log.warn("{}: on_message: wrong cluster (cluster should be {}, not {})", .{
+                    self.id,
+                    self.cluster,
+                    message.header.cluster,
+                });
+                return;
+            }
+            switch (message.header.command) {
+                .pong_client => self.on_pong_client(message),
+                .reply => self.on_reply(message),
+                .eviction => self.on_eviction(message),
+                else => {
+                    log.warn("{}: on_message: ignoring misdirected {s} message", .{
+                        self.id,
+                        @tagName(message.header.command),
+                    });
+                    return;
+                },
+            }
         }
 
         fn on_eviction(self: *Self, eviction: *const Message) void {
@@ -389,11 +409,12 @@ pub fn Client(comptime StateMachine_: type, comptime MessageBus: type) type {
             // Eagerly release request message, to ensure that user's callback can submit a new
             // request.
             self.unref(inflight.message);
-            inflight.message = undefined;
-
             // Even though we release our reference to the message, the user might have retained
             // another one.
+            maybe(inflight.message.references > 0);
             maybe(self.messages_available == 0);
+
+            inflight.message = undefined;
 
             log.debug("{}: on_reply: user_data={} request={} size={} {s}", .{
                 self.id,
@@ -490,7 +511,7 @@ pub fn Client(comptime StateMachine_: type, comptime MessageBus: type) type {
             assert(header.cluster == self.cluster);
             assert(header.size == @sizeOf(Header));
 
-            const message = self.message_bus.pool.get_message();
+            const message = self.message_bus.get_message();
             defer self.message_bus.unref(message);
 
             message.header.* = header;

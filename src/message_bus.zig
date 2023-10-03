@@ -43,6 +43,20 @@ fn MessageBusType(comptime process_type: vsr.ProcessType) type {
     return struct {
         const Self = @This();
 
+        pub const Callback = switch (process_type) {
+            .replica => struct {
+                /// The callback to be called when a message is received.
+                on_message_received: *const fn (message_bus: *Self, message: *Message) void,
+            },
+            .client => struct {
+                /// The callback to be called when a message is received.
+                on_message_received: *const fn (message_bus: *Self, message: *Message) void,
+
+                /// The callback to be called when a message is about to be freed.
+                on_message_freed: *const fn (message_bus: *Self, message: *const Message) void,
+            },
+        };
+
         pool: *MessagePool,
         io: *IO,
 
@@ -72,8 +86,7 @@ fn MessageBusType(comptime process_type: vsr.ProcessType) type {
             .client => void,
         },
 
-        /// The callback to be called when a message is received.
-        on_message_callback: *const fn (message_bus: *Self, message: *Message) void,
+        callback: Callback,
 
         /// This slice is allocated with a fixed size in the init function and never reallocated.
         connections: []Connection,
@@ -102,7 +115,7 @@ fn MessageBusType(comptime process_type: vsr.ProcessType) type {
             cluster: u32,
             process: Process,
             message_pool: *MessagePool,
-            on_message_callback: *const fn (message_bus: *Self, message: *Message) void,
+            callback: Callback,
             options: Options,
         ) !Self {
             // There must be enough connections for all replicas and at least one client.
@@ -142,7 +155,7 @@ fn MessageBusType(comptime process_type: vsr.ProcessType) type {
                     },
                     .client => {},
                 },
-                .on_message_callback = on_message_callback,
+                .callback = callback,
                 .connections = connections,
                 .replicas = replicas,
                 .replicas_connect_attempts = replicas_connect_attempts,
@@ -376,6 +389,11 @@ fn MessageBusType(comptime process_type: vsr.ProcessType) type {
         }
 
         pub fn unref(bus: *Self, message: *Message) void {
+            if (comptime process_type == .client) {
+                if (message.references == 1) {
+                    bus.callback.on_message_freed(bus, message);
+                }
+            }
             bus.pool.unref(message);
         }
 
@@ -805,7 +823,7 @@ fn MessageBusType(comptime process_type: vsr.ProcessType) type {
                     }
                 }
 
-                bus.on_message_callback(bus, message);
+                bus.callback.on_message_received(bus, message);
             }
 
             fn set_and_verify_peer(connection: *Connection, bus: *Self, header: *const Header) bool {
