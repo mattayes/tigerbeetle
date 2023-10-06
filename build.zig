@@ -715,7 +715,7 @@ fn go_client(
 
             const lib = b_isolated.addStaticLibrary(.{
                 .name = "tb_client",
-                .root_source_file = .{ .path = "src/clients/c/tb_client.zig" },
+                .root_source_file = .{ .path = "src/clients/c/tb_client_exports.zig" },
                 .target = cross_target,
                 .optimize = mode,
                 .main_pkg_path = .{ .path = "src" },
@@ -823,7 +823,7 @@ fn dotnet_client(
 
         const lib = b_isolated.addSharedLibrary(.{
             .name = "tb_client",
-            .root_source_file = .{ .path = "src/clients/c/tb_client.zig" },
+            .root_source_file = .{ .path = "src/clients/c/tb_client_exports.zig" },
             .target = cross_target,
             .optimize = mode,
             .main_pkg_path = .{ .path = "src" },
@@ -936,14 +936,14 @@ fn c_client(
 
         const shared_lib = b_isolated.addSharedLibrary(.{
             .name = "tb_client",
-            .root_source_file = .{ .path = "src/clients/c/tb_client.zig" },
+            .root_source_file = .{ .path = "src/clients/c/tb_client_exports.zig" },
             .target = cross_target,
             .optimize = mode,
             .main_pkg_path = .{ .path = "src" },
         });
         const static_lib = b_isolated.addStaticLibrary(.{
             .name = "tb_client",
-            .root_source_file = .{ .path = "src/clients/c/tb_client.zig" },
+            .root_source_file = .{ .path = "src/clients/c/tb_client_exports.zig" },
             .target = cross_target,
             .optimize = mode,
             .main_pkg_path = .{ .path = "src" },
@@ -987,7 +987,7 @@ fn c_client_sample(
 
     const static_lib = b.addStaticLibrary(.{
         .name = "tb_client",
-        .root_source_file = .{ .path = "src/clients/c/tb_client.zig" },
+        .root_source_file = .{ .path = "src/clients/c/tb_client_exports.zig" },
         .target = target,
         .optimize = mode,
         .main_pkg_path = .{ .path = "src" },
