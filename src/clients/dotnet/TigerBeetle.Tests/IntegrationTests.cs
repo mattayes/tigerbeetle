@@ -1171,18 +1171,6 @@ namespace TigerBeetle.Tests
         {
             try
             {
-                if (Process.GetProcessesByName(TB_EXE) is Process[] runningList)
-                {
-                    foreach (var runningProcess in runningList)
-                    {
-                        runningProcess.Kill();
-                    }
-                }
-            }
-            catch { }
-
-            try
-            {
                 if (process != null && !process.HasExited)
                 {
                     process.Kill();
